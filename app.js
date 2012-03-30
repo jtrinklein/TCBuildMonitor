@@ -4,23 +4,15 @@
  */
 
 var express = require('express'),
-	fs = require('fs'),
-	spawn = require('child_process').spawn,
-	exec = require('child_process').exec,
 	http = require('http');
 
 var app = module.exports = express.createServer();
 
-var pid = null;
-var currentSoundFile = '';
-var mplayer;
 // Configuration
 
 app.configure(function(){
   app.use(express.bodyParser());
   app.use(express.methodOverride());
-//  app.use(app.router);
-  app.use(express.static(__dirname + '/public'));
 });
 
 app.configure('development', function(){
@@ -31,42 +23,30 @@ app.configure('production', function(){
   app.use(express.errorHandler());
 });
 
+var soundSystemHost = 'localhost';
+var soundSystemPort = 8000;
+var LastBuildStatus = {};
 
-function playSound(filename) {
+function alertBrokenBuild(buildName) {
+	var speakText = buildName + ' build is broken';
+	var playPath = '/play?file=broken-build.wav&speech=' + speakText;
+	
 	var options = {
-	  host: 'localhost',
-	  port: 8000,
-	  path: '/play&file=' + filename
+	  host: soundSystemHost,
+	  port: soundSystemPort,
+	  path: playPath
 	};
 
 	http.get(options, function(res) {
-		console.log('Played sound: ' + filename);
+		console.log('Build alert successful.');
 		console.log('');
 	}).on('error', function(e) {
-		console.log('Failed to play sound: ' + filename);
-		console.log('');
-	});
-}
-
-function speakText(text) {
-	var options = {
-	  host: 'localhost',
-	  port: 8000,
-	  path: '/speak&text=' + text
-	};
-
-	http.get(options, function(res) {
-		console.log('Spoke text: ' + text);
-		console.log('');
-	}).on('error', function(e) {
-		console.log('Failed to speak text: ' + text);
+		console.log('Build alert failure.');
 		console.log('');
 	});
 }
 
 // Routes
-
-var LastBuildStatus = {};
 
 app.get('/lastbuilds',function(req,res) {
 	var response = '';
@@ -77,35 +57,40 @@ app.get('/lastbuilds',function(req,res) {
 });
 
 app.post('/buildstatuschange', function (req,res) {
+	var currTime = new Date() + ' -> ';
 	var buildStatus = req.param('buildStatus','missing?');
-	var failed = buildStatus.indexOf('FAILURE') > -1 || buildStatus.indexOf('Tests failed') > -1;
-	var statusMsg = 'PASSED';
-	if(failed) {statusMsg = 'FAILED';}
 	var buildName = req.param('buildName','noname');
 	var buildNumber = req.param('buildNumber','000');
+	var buildInfo = buildName + ' (' + buildNumber + ') ';
+	var buildPassTag = '[PASSED]';
+	var buildFailTag = '[FAILED]';
+	
+	// build change fail text  --------\/      build finish failed text -------\/
+	var failed = buildStatus.indexOf('FAILURE') > -1 || buildStatus.indexOf('Tests failed') > -1;
+	
+	console.log('');
 	
 	if(LastBuildStatus[buildName] === buildStatus) {
 		//ignore repeat failures
-		console.log('ignored build: ' + buildName + ' (' + buildNumber + ') [' + statusMsg + ']');
+		console.log(currTime + 'No change, Ignored build: ' + buildInfo + buildFailTag);
 		res.send('ignored');
 		return;
 	}
 	
+	//update build status
 	LastBuildStatus[buildName] = buildStatus;
 	
-	console.log('----=[ ' + buildName + ' (' + buildNumber + ') ]=----');
-	console.log('Completion Time: ' + new Date());
-	console.log('New Status: ' + buildStatus);
-	console.log('Notes: ' + statusMsg);
-	
-	if(failed) {
-		playSound('build-broken.wav');
-		speakText(buildName + ' build is broken');
+	if(!failed) {
+		console.log(currTime + 'Build succeeded: ' + buildInfo + buildPassTag);
+		res.send('passed');
+		return;
 	}
 	
-	console.log('---------------------------------------------')
-	console.log('');
-	res.send('ok');
+	console.log(currTime + buildInfo + buildFailTag  + '<<<<<<<<<<<<')
+	console.log('New Status: ' + buildStatus);
+	alertBrokenBuild(buildName);
+	
+	res.send('failed');
 });
 
 app.listen(8001);
