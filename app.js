@@ -29,7 +29,7 @@ var LastBuildStatus = {};
 
 function alertBrokenBuild(buildName) {
 	var speakText = buildName + ' build is broken';
-	var playPath = '/play?file=broken-build.wav&speech=' + speakText;
+	var playPath = '/play?file=broken-build.wav';//&speech=' + speakText;
 	
 	var options = {
 	  host: soundSystemHost,
