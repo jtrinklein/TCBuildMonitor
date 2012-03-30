@@ -1,0 +1,7 @@
+TCBuildMonitor
+
+This is a simple server that recieves POST requests from TeamCity WebHooks.
+
+The server listens for POSTs to /buildchanges on build changes and fires a sound when builds turn red, using a locally installed NSoundSys server.
+
+The previous build status can be viewed by performing a GET on /lastbuild
