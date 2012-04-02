@@ -65,7 +65,6 @@ app.post('/buildstatuschange', function (req,res) {
 	var buildPassTag = '[PASSED]';
 	var buildFailTag = '[FAILED]';
 	
-	// build change fail text  --------\/      build finish failed text -------\/
 	var failed = buildStatus.indexOf('FAILURE') > -1 || buildStatus.indexOf('Tests failed') > -1;
 	
 	console.log('');
@@ -86,7 +85,7 @@ app.post('/buildstatuschange', function (req,res) {
 		return;
 	}
 	
-	console.log(currTime + buildInfo + buildFailTag  + '<<<<<<<<<<<<')
+	console.log(currTime + buildInfo + buildFailTag  + '<<<<<<<<<<<<');
 	console.log('New Status: ' + buildStatus);
 	alertBrokenBuild(buildName);
 	
