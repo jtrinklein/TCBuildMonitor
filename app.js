@@ -1,15 +1,20 @@
+// Data required by app
+var smtpData = require('./smtpData.json'),
+	soundSysData = require('./soundSysData.json'),
+	phoneticMap = require('./phoneticMapping.json');
 
-/**
- * Module dependencies.
- */
-
+// Module dependencies.
 var express = require('express'),
-	http = require('http');
+	http = require('http'),
+	exec = require('child_process').exec,
+	mailer = require('nodemailer').createTransport('SMTP', smtpData);
 
+var LastBuildStatus = {};
+var brokenBuildSound = 'broken-build.wav';
+var brokenPersonalBuildSound = 'broken-personal-build.wav';
 var app = module.exports = express.createServer();
 
 // Configuration
-
 app.configure(function(){
   app.use(express.bodyParser());
   app.use(express.methodOverride());
@@ -23,32 +28,37 @@ app.configure('production', function(){
   app.use(express.errorHandler());
 });
 
-var soundSystemHost = 'localhost';
-var soundSystemPort = 8000;
-var LastBuildStatus = {};
 
-function alertBrokenBuild(buildName) {
-	var speakText = buildName + ' build is broken';
-	var playPath = '/play?file=broken-build.wav';//&speech=' + speakText;
+// Alert helpers
+function getPhoneticBuildName(buildName) {
+	var spokenName = buildName
+	if(buildName in phoneticMap) {
+		spokenName = phoneticMap[buildName];
+	}
 	
-	var options = {
-	  host: soundSystemHost,
-	  port: soundSystemPort,
-	  path: playPath
-	};
+	return spokenName;
+}
 
-	http.get(options, function(res) {
-		console.log('Build alert successful.');
-		console.log('');
-	}).on('error', function(e) {
-		console.log('Build alert failure.');
-		console.log('');
-	});
+function alertBrokenBuild(buildSound, buildName) {
+	var phoneticBuildName = getPhoneticBuildName(buildName);
+	var queryString = 'file=' + buildSound + '&speak=' + phoneticBuildName;
+	var playPath = '/play';
+	
+	console.log('alerting for build: ' + buildName);
+	console.log('spoken text for build: ' + phoneticBuildName);
+
+	console.log('play path: ' + playPath + '?' + queryString);
+	exec('curl -d "' + queryString + '" -X POST http://' + soundSysData.host + ':' + soundSysData.port + playPath, 
+		function(error, stdout, stderr) {console.log(stdout);});
+
 }
 
 // Routes
 
 app.get('/lastbuilds',function(req,res) {
+	console.log('');
+	console.log('status ping');
+	console.log('');
 	var response = '';
 	for (var build in LastBuildStatus) {
 		response += build + ': ' + LastBuildStatus[build] + '<br/>';
@@ -64,33 +74,60 @@ app.post('/buildstatuschange', function (req,res) {
 	var buildInfo = buildName + ' (' + buildNumber + ') ';
 	var buildPassTag = '[PASSED]';
 	var buildFailTag = '[FAILED]';
+	var triggeredBy = req.param('triggeredBy','');
 	
-	// build change fail text  --------\/      build finish failed text -------\/
 	var failed = buildStatus.indexOf('FAILURE') > -1 || buildStatus.indexOf('Tests failed') > -1;
 	
 	console.log('');
-	
-	if(LastBuildStatus[buildName] === buildStatus) {
-		//ignore repeat failures
-		console.log(currTime + 'No change, Ignored build: ' + buildInfo + buildFailTag);
-		res.send('ignored');
-		return;
-	}
-	
-	//update build status
+	console.log('Time: ' + new Date());
+	console.log('Triggered by: ' + triggeredBy);
+	console.log('Build Status --------: ' + req.param('buildStatus','nostat'));
+	console.log('Build Status Previous: ' + req.param('buildStatusPrevious','noprev'));
+
+	//update last build status
 	LastBuildStatus[buildName] = buildStatus;
-	
+
 	if(!failed) {
 		console.log(currTime + 'Build succeeded: ' + buildInfo + buildPassTag);
 		res.send('passed');
 		return;
 	}
 	
-	console.log(currTime + buildInfo + buildFailTag  + '<<<<<<<<<<<<')
+	// ON FAILED BUILDS:
+	console.log(buildInfo + buildFailTag  + '<<<<<<<<<<<<');
 	console.log('New Status: ' + buildStatus);
-	alertBrokenBuild(buildName);
+
+	// Alert with sound system
+	var alertSound = brokenPersonalBuildSound;
+
+	if (triggeredBy.indexOf('Team Foundation Server')  > -1 || triggeredBy.indexOf('Schedule Trigger')  > -1 || triggeredBy.indexOf('.Root') > -1) {
+		alertSound = brokenBuildSound;
+	}
+	
+	alertBrokenBuild(alertSound, buildName);
 	
 	res.send('failed');
+
+	// Email to build flow
+	var emailRecipient = 'build@daptiv.flowdock.com';
+
+	console.log('[emailer] sending email to ' + emailRecipient);
+	mailer.sendMail({
+			from: 'teamcity@daptiv.com', // This must match credentials supplied in smtpData.json
+			to: emailRecipient,
+			subject: 'Broken Build: ' + buildName,
+			html: req.toString()
+		},
+		function(err, status) {
+			console.log('');
+			console.log('[emailer] status:');
+			console.log(status);
+			console.log('[emailer] error:');
+			console.log(err);
+			console.log('[emailer] closing connection');
+			mailer.close();
+		});
+
 });
 
 app.listen(8001);

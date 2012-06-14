@@ -1,0 +1,9 @@
+{
+	"host": "hostaddress",
+	"port": "portnumber",
+	"domain": "domaininfo",
+	"auth": {
+		"user": "username",
+		"pass": "password"
+	}
+}
