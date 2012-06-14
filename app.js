@@ -93,8 +93,7 @@ app.post('/buildstatuschange', function (req,res) {
 		return;
 	}
 	
-	// ON FAILED BUILDS:
-	console.log(buildInfo + buildFailTag  + '<<<<<<<<<<<<');
+	console.log(currTime + buildInfo + buildFailTag  + '<<<<<<<<<<<<');
 	console.log('New Status: ' + buildStatus);
 
 	// Alert with sound system
